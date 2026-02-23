@@ -1,22 +1,23 @@
 # Discord MyAnimeList Bot
 
-A Discord bot that brings MyAnimeList data directly to your server. Search for anime, view user lists, check seasonal releases, and play interactive rating games.
+## Project Overview
+A comprehensive Discord bot integration for MyAnimeList (MAL) that allows users to seamlessly browse anime information, manage lists, and engage in interactive anime-related mini-games directly within Discord. Built using `discord.py` and the MAL API v2, it features modern slash command interactions, paginated views, and dynamic UI components.
 
 ## Features
 
 ### Search & Browse
-- **`!search <name>`** - Search MyAnimeList for anime by title with instant results and detailed information
-- **`!anime <id>`** - Fetch comprehensive details including synopsis, rating, genres, studios, and related anime
-- **`!seasonal <year> <season>`** - Explore anime released in a specific season with pagination
-- **`!list <username> [status]`** - View any user's anime list with optional status filtering (watching, completed, etc.)
+- **`/search <query>`** - Search MyAnimeList for anime by title with instant results and detailed information
+- **`/anime <id>`** - Fetch comprehensive details including synopsis, rating, genres, studios, and related anime
+- **`/seasonal <year> <season>`** - Explore anime released in a specific season with pagination
+- **`/list <username> [sorting_method] [status]`** - View any user's anime list with optional status filtering
 
 ### Interactive Games
-- **Guess the Rating** - `!guessgame [difficulty] [limit] [ranking_type]` then `!guess <number>`
+- **Guess the Rating** - `/guessgame [difficulty] [limit] [ranking_type]` then `/guess <guess_value>`
   - Guess anime ratings within margin (easy - 0.5; medium - 0.25; hard - 0.1)
   - Customizable anime pool size (1-2500)
   - Customizable ranking type to change what is in the pool
 
-- **Higher or Lower** - `!higherlower [limit] [ranking_type]`
+- **Higher or Lower** - `/higherlower [limit] [ranking_type]`
   - Predict if the next anime's rating is higher or lower
   - Interactive button-based gameplay
   - Customizable anime pool size (1-2500)
@@ -65,19 +66,19 @@ A Discord bot that brings MyAnimeList data directly to your server. Search for a
 
 ## Usage
 
-Once the bot is running and invited to your server, use commands with the `!` prefix:
+Once the bot is running and invited to your server, use slash commands:
 
 ### Quick Examples
 ```
-!search Demon Slayer
-!anime 5114
-!list MyUsername score completed
-!seasonal 2024 spring
-!guessgame easy 200 airing
-!guess 8.5
-!higherlower 100 favorite
-!help
-!help guessgame
+/search Demon Slayer
+/anime 5114
+/list MyUsername score completed
+/seasonal 2024 spring
+/guessgame easy 200 airing
+/guess 8.5
+/higherlower 100 favorite
+/help
+/help guessgame
 ```
 
 ### Adding the Bot to Your Server
@@ -93,14 +94,17 @@ Generate an invite link with these permissions:
 
 | Command | Usage | Description |
 |---------|-------|-------------|
-| `search` | `!search <name>` | Search for anime by title |
-| `anime` | `!anime <id>` | Get detailed anime information |
-| `list` | `!list <username> [sorting method] [status]` | View a user's anime list |
-| `seasonal` | `!seasonal <year> <season>` | Browse seasonal anime |
-| `guessgame` | `!guessgame [difficulty] [limit] [ranking_type]` | Start guess the rating game |
-| `guess` | `!guess <number>` | Submit a guess |
-| `higherlower` | `!higherlower [limit] [ranking_type]` | Start higher or lower game |
-| `help` | `!help [command]` | View help information |
+| `search` | `/search <query>` | Search for anime by title |
+| `anime` | `/anime <anime_id>` | Get detailed anime information |
+| `list` | `/list <username> [sorting_method] [status]` | View a user's anime list |
+| `seasonal` | `/seasonal <year> <season>` | Browse seasonal anime |
+| `guessgame` | `/guessgame [difficulty] [limit] [ranking_type]` | Start guess the rating game |
+| `guess` | `/guess <guess_value>` | Submit a guess |
+| `higherlower` | `/higherlower [limit] [ranking_type]` | Start higher or lower game |
+| `help` | `/help [command]` | View help information |
+
+## Changelog
+See [CHANGELOG.md](CHANGELOG.md) for a full history of changes.
 
 ## Architecture
 
@@ -163,9 +167,9 @@ The bot handles:
 - Ensure all dependencies installed: `pip install -r requirements.txt`
 
 **Commands not working**
-- Verify bot has Message Content Intent enabled in Developer Portal
+- Verify bot has Message Content Intent enabled in Developer Portal (required for some legacy features, though slash commands use Interactions)
 - Check bot has send message permissions in the channel
-- Ensure prefix `!` is used
+- Ensure you are using slash commands (`/`) and the bot's commands appear in the Discord UI
 
 **API errors**
 - Verify MyAnimeList Client ID is valid

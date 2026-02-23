@@ -4,6 +4,8 @@ import os
 import random
 from dotenv import load_dotenv
 from discord.ext import commands
+from discord import app_commands
+from typing import Optional
 
 load_dotenv()
 
@@ -382,10 +384,10 @@ class PaginationView(discord.ui.View):
 class SearchView(discord.ui.View):
     """Handle dropdown selection and display detailed anime information for the chosen result."""
 
-    def __init__(self, ctx, results, timeout=300):
+    def __init__(self, user, results, timeout=300):
         super().__init__(timeout=timeout)
         self.results = results
-        self.ctx = ctx
+        self.user = user
 
         # Create options for the select menu
         options = []
@@ -409,7 +411,7 @@ class SearchView(discord.ui.View):
         self.add_item(select)
 
     async def select_callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.ctx.author.id:
+        if interaction.user.id != self.user.id:
             await interaction.response.defer()
             return
 
@@ -450,9 +452,8 @@ class SearchView(discord.ui.View):
 class HigherLowerView(discord.ui.View):
     """Initialize the higher/lower game button view for a specific user session."""
 
-    def __init__(self, ctx, user_id, message=None, timeout=300):
+    def __init__(self, user_id, message=None, timeout=300):
         super().__init__(timeout=timeout)
-        self.ctx = ctx
         self.user_id = user_id
         self.message = message
 
@@ -464,7 +465,7 @@ class HigherLowerView(discord.ui.View):
             await interaction.response.defer()
             return
         await interaction.response.defer()
-        await _process_higher_lower_guess(self.ctx, "higher", interaction, self.message)
+        await _process_higher_lower_guess("higher", interaction, self.message)
         self.stop()
 
     @discord.ui.button(label="📉 Lower", style=discord.ButtonStyle.red)
@@ -475,19 +476,20 @@ class HigherLowerView(discord.ui.View):
             await interaction.response.defer()
             return
         await interaction.response.defer()
-        await _process_higher_lower_guess(self.ctx, "lower", interaction, self.message)
+        await _process_higher_lower_guess("lower", interaction, self.message)
         self.stop()
 
 
 # ===== COMMANDS - SEARCH & BROWSE =====
 
 
-@bot.command()
-async def search(ctx, *, query=None):
+@app_commands.describe(query="Anime title to search for")
+@bot.tree.command(name="search", description="Search MyAnimeList for anime by title")
+async def search(interaction: discord.Interaction, query: Optional[str] = None):
     """Search MyAnimeList for anime by title and display selectable search results."""
 
     if query == None:
-        await ctx.send("Missing search query. Use `!help search` for more info.")
+        await interaction.response.send_message("Missing search query. Use `/help search` for more info.", ephemeral=True)
         return
 
     query = str(query).strip()
@@ -495,7 +497,7 @@ async def search(ctx, *, query=None):
     results = parse_search_results(results_data)
 
     if not results:
-        await ctx.send("No anime found.")
+        await interaction.response.send_message("No anime found.")
         return
 
     embed = discord.Embed(
@@ -513,26 +515,27 @@ async def search(ctx, *, query=None):
             inline=False,
         )
     embed.set_footer(
-        text="Use !anime <ID> to get more details or use the dropdown and select an anime"
+        text="Use /anime <ID> to get more details or use the dropdown and select an anime"
     )
 
-    view = SearchView(ctx, results)
-    await ctx.send(embed=embed, view=view)  # Include dropdown for detailed view
+    view = SearchView(interaction.user, results)
+    await interaction.response.send_message(embed=embed, view=view)  # Include dropdown for detailed view
 
 
-@bot.command()
-async def anime(ctx, anime_id=None, *args):
+@app_commands.describe(anime_id="MyAnimeList anime ID")
+@bot.tree.command(name="anime", description="Get detailed information for an anime by ID")
+async def anime(interaction: discord.Interaction, anime_id: int):
     """Fetch and display detailed information for a single anime by its MyAnimeList ID."""
 
     if anime_id is None:
-        await ctx.send("Missing anime ID. Use `!help anime` for more info.")
+        await interaction.response.send_message("Missing anime ID. Use `/help anime` for more info.")
         return
 
     try:
         anime_id = int(anime_id)
     except ValueError:
-        await ctx.send(
-            f'Invalid anime ID "{anime_id}". ID must be a number. Use `!help anime` for more info.'
+        await interaction.response.send_message(
+            f'Invalid anime ID "{anime_id}". ID must be a number. Use `/help anime` for more info.'
         )
         return
 
@@ -540,7 +543,7 @@ async def anime(ctx, anime_id=None, *args):
     embed_data = format_anime_embed(anime_data)
 
     if not embed_data:
-        await ctx.send("Anime not found.")
+        await interaction.response.send_message("Anime not found.")
         return
 
     embed = discord.Embed(
@@ -562,33 +565,22 @@ async def anime(ctx, anime_id=None, *args):
     embed.add_field(
         name="MyAnimeList", value=f"[View on MAL]({embed_data['url']})", inline=False
     )
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.command()
-async def seasonal(ctx, year=None, season=None, *args):
+@app_commands.describe(year="Year, e.g., 2024", season="Season: winter, spring, summer, fall")
+@bot.tree.command(name="seasonal", description="View anime from a specific season")
+async def seasonal(interaction: discord.Interaction, year: int, season: str):
     """Retrieve and paginate anime released in a specific year and season."""
 
-    if year is None or season is None:
-        await ctx.send(
-            "Incorrect/missing year or season. Use `!help seasonal` for more info."
-        )
-        return
-
-    try:
-        year = int(year)
-    except ValueError:
-        await ctx.send(
-            f'Invalid year "{year}". Year must be a number. Use `!help seasonal` for more info.'
-        )
-        return
+    await interaction.response.defer()
 
     season = season.lower()
 
     valid_seasons = ["winter", "spring", "summer", "fall"]
     if season not in valid_seasons:
-        await ctx.send(
-            f"Invalid season \"{season}\". Valid options: {', '.join(valid_seasons)}. Use `!help seasonal` for more info."
+        await interaction.followup.send(
+            f"Invalid season \"{season}\". Valid options: {', '.join(valid_seasons)}. Use `/help seasonal` for more info."
         )
         return
 
@@ -611,36 +603,35 @@ async def seasonal(ctx, year=None, season=None, *args):
         offset += 500
 
     if not all_anime:
-        await ctx.send(f"Could not fetch anime for {season.capitalize()} {year}.")
+        await interaction.followup.send(f"Could not fetch anime for {season.capitalize()} {year}.")
         return
 
     title = f"{season.capitalize()} {year} Anime"
-    view = PaginationView(all_anime, title, ctx.author.id, is_ranking=True, timeout=300)
+    view = PaginationView(all_anime, title, interaction.user.id, is_ranking=True, timeout=300)
     embed = view.get_embed()
-    await ctx.send(embed=embed, view=view)
+    await interaction.followup.send(embed=embed, view=view)
 
 
 # ===== COMMANDS - LIST  =====
 
 
-@bot.command()
-async def list(ctx, username=None, sorting_method="alphabetical", *, status=None):
+@app_commands.describe(username="MyAnimeList username", sorting_method="Sort: alphabetical or score", status="Filter status: watching, completed, on hold, dropped, plan to watch")
+@bot.tree.command(name="list", description="View a user's anime list with pagination")
+async def list(interaction: discord.Interaction, username: str, sorting_method: str = "alphabetical", status: Optional[str] = None):
     """Retrieve and paginate a user's MyAnimeList anime list, optionally filtered by status."""
 
-    if sorting_method not in ["alphabetical", "score"]:
-        await ctx.send(
-            f'Cannot sort by "{sorting_method}". Use `!help list` for more info.'
-        )
-        return
+    await interaction.response.defer()
 
-    if not username:
-        await ctx.send("Missing username. Use `!help list` for more info.")
+    if sorting_method not in ["alphabetical", "score"]:
+        await interaction.followup.send(
+            f'Cannot sort by "{sorting_method}". Use `/help list` for more info.'
+        )
         return
 
     valid_statuses = ["watching", "completed", "on hold", "dropped", "plan to watch"]
     if status is not None and status not in valid_statuses:
-        await ctx.send(
-            f"Invalid status \"{status}\". Valid options: {', '.join(valid_statuses)}. Use `!help list` for more info."
+        await interaction.followup.send(
+            f"Invalid status \"{status}\". Valid options: {', '.join(valid_statuses)}. Use `/help list` for more info."
         )
         return
 
@@ -650,7 +641,7 @@ async def list(ctx, username=None, sorting_method="alphabetical", *, status=None
     if status == "plan to watch":
         status = "plan_to_watch"
 
-    user_id = ctx.author.id
+    user_id = interaction.user.id
     all_anime = []
     offset = 0
 
@@ -672,7 +663,7 @@ async def list(ctx, username=None, sorting_method="alphabetical", *, status=None
         offset += 100
 
     if not all_anime:
-        await ctx.send("Could not fetch your list.")
+        await interaction.followup.send("Could not fetch your list.")
         return
 
     if sorting_method == "score":
@@ -684,42 +675,37 @@ async def list(ctx, username=None, sorting_method="alphabetical", *, status=None
     title = f"{username}'s Anime List ({status or 'All'})"
     view = PaginationView(all_anime, title, user_id, profile_url, timeout=300)
     embed = view.get_embed()
-    await ctx.send(embed=embed, view=view)
+    await interaction.followup.send(embed=embed, view=view)
 
 
 # ===== COMMANDS - GAMES =====
 
 
-@bot.command()
+@app_commands.describe(difficulty="Difficulty: easy, medium, or hard", limit="Anime pool size (1-2500)", ranking_type="Ranking type: bypopularity (default), airing, movie, favorite")
+@bot.tree.command(name="guessgame", description="Start the guess-the-rating game")
 async def guessgame(
-    ctx,
+    interaction: discord.Interaction,
     difficulty: str = "medium",
-    limit: str = "500",
+    limit: int = 500,
     ranking_type: str = "bypopularity",
-    *args,
 ):
     """Start the guess the rating game with optional pool size and ranking type"""
 
-    user_id = ctx.author.id
+    await interaction.response.defer()
+
+    user_id = interaction.user.id
 
     difficulty = difficulty.lower()
     difficulties = ["easy", "medium", "hard"]
     if difficulty not in difficulties:
-        await ctx.send(
-            f"Invalid difficulty \"{difficulty}\". Valid options: {', '.join(difficulties)}. Use `!help guessgame` for more info."
+        await interaction.followup.send(
+            f"Invalid difficulty \"{difficulty}\". Valid options: {', '.join(difficulties)}. Use `/help guessgame` for more info."
         )
         return
 
-    try:
-        limit_value = int(limit)
-        if limit_value < 1 or limit_value > 2500:
-            await ctx.send(
-                "Limit must be a number between 1-2500. Use `!help guessgame` for more info."
-            )
-            return
-    except ValueError:
-        await ctx.send(
-            f'Invalid limit "{limit}". Limit must be a number between 1-2500. Use `!help guessgame` for more info.'
+    if limit < 1 or limit > 2500:
+        await interaction.followup.send(
+            "Limit must be a number between 1-2500. Use `/help guessgame` for more info."
         )
         return
 
@@ -729,14 +715,14 @@ async def guessgame(
 
     valid_types = ["bypopularity", "airing", "movie", "favorite"]
     if ranking_type not in valid_types:
-        await ctx.send(
-            f"Invalid ranking type \"{ranking_type}\". Valid options: {', '.join(valid_types)}. Use `!help guessgame` for more info."
+        await interaction.followup.send(
+            f"Invalid ranking type \"{ranking_type}\". Valid options: {', '.join(valid_types)}. Use `/help guessgame` for more info."
         )
         return
 
     all_anime = []
     offset = 0
-    remaining = limit_value
+    remaining = limit
 
     # Fetch anime in batches (API max: 500 per request)
     while remaining > 0:
@@ -758,7 +744,7 @@ async def guessgame(
         offset += batch_limit
 
     if not all_anime:
-        await ctx.send("Could not start game.")
+        await interaction.followup.send("Could not start game.")
         return
 
     # Remove from pool so same anime doesn't appear twice
@@ -787,37 +773,38 @@ async def guessgame(
         margin = 0.1
     embed.add_field(
         name="Instructions",
-        value=f"Guess the rating (0-10) within ±{margin} points!\nUse: !guess <number>",
+        value=f"Guess the rating (0-10) within ±{margin} points!\nUse: /guess <number>",
         inline=False,
     )
-    await ctx.send(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
-@bot.command()
-async def guess(ctx, guess_value=None, *args):
-    """Guess the anime rating. Usage: !guess 8.5"""
+@app_commands.describe(guess_value="Your rating guess (0-10)")
+@bot.tree.command(name="guess", description="Submit your rating guess")
+async def guess(interaction: discord.Interaction, guess_value: float):
+    """Guess the anime rating. Usage: /guess 8.5"""
 
-    user_id = ctx.author.id
+    user_id = interaction.user.id
 
     if user_id not in user_guess_sessions:
-        await ctx.send("Start a game first with !guessgame")
+        await interaction.response.send_message("Start a game first with /guessgame")
         return
 
     if guess_value is None:
-        await ctx.send("Missing rating value. Use `!help guess` for more info.")
+        await interaction.response.send_message("Missing rating value. Use `/help guess` for more info.")
         return
 
     try:
         guess_value = float(guess_value)
     except ValueError:
-        await ctx.send(
-            f'Invalid rating "{guess_value}". Rating must be a number between 0-10. Use `!help guess` for more info.'
+        await interaction.response.send_message(
+            f'Invalid rating "{guess_value}". Rating must be a number between 0-10. Use `/help guess` for more info.'
         )
         return
 
     if guess_value < 0 or guess_value > 10:
-        await ctx.send(
-            "Rating must be between 0 and 10. Use `!help guess` for more info."
+        await interaction.response.send_message(
+            "Rating must be between 0 and 10. Use `/help guess` for more info."
         )
         return
 
@@ -883,16 +870,21 @@ async def guess(ctx, guess_value=None, *args):
             embed.set_image(url=current_anime["main_picture"]["medium"])
         del user_guess_sessions[user_id]
 
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
-@bot.command()
+@app_commands.describe(limit="Anime pool size (2-2500). Default 500", ranking_type="Ranking type: bypopularity (default), airing, movie, favorite")
+@bot.tree.command(name="higherlower", description="Play the higher or lower rating game")
 async def higherlower(
-    ctx, limit: str = None, ranking_type: str = "bypopularity", *args
+    interaction: discord.Interaction,
+    limit: Optional[int] = None,
+    ranking_type: str = "bypopularity",
 ):
     """Start the higher/lower rating game"""
 
-    user_id = ctx.author.id
+    await interaction.response.defer()
+
+    user_id = interaction.user.id
     ranking_type = ranking_type.lower()
 
     # Default limit if not provided
@@ -902,8 +894,8 @@ async def higherlower(
         try:
             limit_value = int(limit)
         except ValueError:
-            await ctx.send(
-                f'Invalid limit "{limit}". Limit must be a number between 2-2500. Use `!help higherlower` for more info.'
+            await interaction.followup.send(
+                f'Invalid limit "{limit}". Limit must be a number between 2-2500. Use `/help higherlower` for more info.'
             )
             return
 
@@ -912,14 +904,14 @@ async def higherlower(
 
     valid_types = ["bypopularity", "airing", "movie", "favorite"]
     if ranking_type not in valid_types:
-        await ctx.send(
-            f"Invalid ranking type \"{ranking_type}\". Valid options: {', '.join(valid_types)}. `!help higherlower` for more info."
+        await interaction.followup.send(
+            f"Invalid ranking type \"{ranking_type}\". Valid options: {', '.join(valid_types)}. Use `/help higherlower` for more info."
         )
         return
 
     if limit_value < 2 or limit_value > 2500:
-        await ctx.send(
-            f'Invalid limit "{limit}". Limit must be a number between 2-2500. Use `!help higherlower` for more info.'
+        await interaction.followup.send(
+            f'Invalid limit "{limit}". Limit must be a number between 2-2500. Use `/help higherlower` for more info.'
         )
         return
 
@@ -950,7 +942,7 @@ async def higherlower(
         offset += batch_limit
 
     if not all_anime or len(all_anime) < 2:
-        await ctx.send("Could not start game.")
+        await interaction.followup.send("Could not start game.")
         return
 
     # Remove from pool so same anime doesn't appear twice
@@ -980,7 +972,7 @@ async def higherlower(
     if current_anime.get("main_picture"):
         embed.set_image(url=current_anime["main_picture"]["medium"])
 
-    await ctx.send(embed=embed)
+    await interaction.followup.send(embed=embed)
 
     embed2 = discord.Embed(title="Next Anime", color=discord.Color.gold())
     embed2.add_field(
@@ -989,18 +981,18 @@ async def higherlower(
     if next_anime.get("main_picture"):
         embed2.set_image(url=next_anime["main_picture"]["medium"])
 
-    view = HigherLowerView(ctx, user_id)
-    msg = await ctx.send(embed=embed2, view=view)
+    view = HigherLowerView(user_id)
+    msg = await interaction.followup.send(embed=embed2, view=view)
     view.message = msg
 
 
-async def _process_higher_lower_guess(ctx, guess, interaction, message):
+async def _process_higher_lower_guess(guess, interaction, message):
     """Process higher/lower guess"""
 
     user_id = interaction.user.id
 
     if user_id not in user_higher_lower_sessions:
-        await ctx.send("Start a game first with !higherlower")
+        await interaction.followup.send("Start a game first with /higherlower")
         return
 
     session = user_higher_lower_sessions[user_id]
@@ -1042,8 +1034,8 @@ async def _process_higher_lower_guess(ctx, guess, interaction, message):
             if session["next_anime"].get("main_picture"):
                 embed.set_image(url=session["next_anime"]["main_picture"]["medium"])
 
-            view = HigherLowerView(ctx, user_id)
-            msg = await ctx.send(embed=embed, view=view)
+            view = HigherLowerView(user_id)
+            msg = await interaction.followup.send(embed=embed, view=view)
             view.message = msg
         else:  # Pool exhausted, last correct guess
             embed.add_field(name="Final Streak", value=session["score"], inline=False)
@@ -1059,7 +1051,7 @@ async def _process_higher_lower_guess(ctx, guess, interaction, message):
             )
             if next_anime.get("main_picture"):
                 embed.set_image(url=next_anime["main_picture"]["medium"])
-            await ctx.send(embed=embed)
+            await interaction.followup.send(embed=embed)
             del user_higher_lower_sessions[user_id]
     else:
         embed = discord.Embed(title="✗ Wrong!", color=discord.Color.red())
@@ -1079,84 +1071,85 @@ async def _process_higher_lower_guess(ctx, guess, interaction, message):
             embed.set_image(url=session["next_anime"]["main_picture"]["medium"])
 
         del user_higher_lower_sessions[user_id]
-        await ctx.send(embed=embed)
+        await interaction.followup.send(embed=embed)
 
 
-@bot.command()
-async def help(ctx, command: str = None, *args):
+@app_commands.describe(command="Command name to get help for")
+@bot.tree.command(name="help", description="Display help information for commands")
+async def help(interaction: discord.Interaction, command: Optional[str] = None):
     """Display help information for commands"""
 
     if command is None:
         embed = discord.Embed(
             title="📖 Bot Command Help",
-            description="Use `!help <command>` for detailed info\nExample: `!help search`\n`< >` are required fields\n`[ ]` are optional fields",
+            description="Use `/help <command>` for detailed info\nExample: `/help search`\n`< >` are required fields\n`[ ]` are optional fields",
             color=discord.Color.blurple(),
         )
 
         embed.add_field(
             name="🔍 Search & Info",
-            value="`!search <name>` - Search for anime\n`!anime <id>` - Get anime details",
+            value="`/search <name>` - Search for anime\n`/anime <id>` - Get anime details",
             inline=False,
         )
 
         embed.add_field(
             name="📚 Anime Lists",
-            value="`!list <username> [sorting method] [status]` - View a user's list\n`!seasonal <year> <season>` - View seasonal anime in a list",
+            value="`/list <username> [sorting method] [status]` - View a user's list\n`/seasonal <year> <season>` - View seasonal anime in a list",
             inline=False,
         )
 
         embed.add_field(
             name="🎮 Games",
-            value="`!guessgame [difficulty] [limit] [ranking type]` - Guess the rating\n`!guess <number>` - Submit guess for guess the rating game\n`!higherlower [limit] [ranking type]` - Higher or lower game",
+            value="`/guessgame [difficulty] [limit] [ranking type]` - Guess the rating\n`/guess <number>` - Submit guess for guess the rating game\n`/higherlower [limit] [ranking type]` - Higher or lower game",
             inline=False,
         )
 
-        embed.set_footer(text="Prefix: ! | Powered by MyAnimeList")
-        await ctx.send(embed=embed)
+        embed.set_footer(text="Powered by MyAnimeList")
+        await interaction.response.send_message(embed=embed)
         return
 
     command = command.lower()
 
     help_data = {
         "search": {
-            "usage": "!search <anime name>",
+            "usage": "/search <anime name>",
             "description": "Search MyAnimeList for anime titles. Returns anime ID and brief overview. Use the dropdown to get more info.",
-            "example": "!search Demon Slayer",
+            "example": "/search Demon Slayer",
         },
         "anime": {
-            "usage": "!anime <anime_id>",
+            "usage": "/anime <anime_id>",
             "description": "Get detailed information for an anime by ID.",
-            "example": "!anime 5114",
+            "example": "/anime 5114",
         },
         "list": {
-            "usage": "!list <username> [sorting method] [status]",
+            "usage": "/list <username> [sorting method] [status]",
             "description": "View a user's anime list with pagination. Optional sort by alphabetical (default) or score. Optionally, filter by status.",
-            "example": "!list username completed",
+            "example": "/list username completed",
             "sort options": "alphabetical (default), score",
             "statuses": "watching, completed, on hold, dropped, plan to watch",
         },
         "seasonal": {
-            "usage": "!seasonal <year> <season>",
+            "usage": "/seasonal <year> <season>",
             "description": "View anime from a specific season with pagination.",
-            "example": "!seasonal 2024 spring",
+            "example": "/seasonal 2024 spring",
             "seasons": "winter, spring, summer, fall",
         },
         "guessgame": {
-            "usage": "!guessgame [difficulty] [limit] [ranking type]",
+            "usage": "/guessgame [difficulty] [limit] [ranking type]",
             "description": "Start the guess-the-rating game. Guess the rating within margin. Optional limit for anime pool size (default: 500, min is 1, max is 2500) and ranking type.",
-            "example": "!guessgame or !guessgame 100 airing",
+            "example": "/guessgame or /guessgame 100 airing",
             "ranking types": "popularity (default), airing, movie, favorite",
             "difficulties": "easy (margin: 0.5), medium (default margin: 0.25), hard (margin: 0.1)",
         },
         "guess": {
-            "usage": "!guess <number>",
+            "usage": "/guess <number>",
             "description": "Submit your rating guess in the guess game.",
-            "example": "!guess 8.5",
+            "example": "/guess 8.5",
         },
         "higherlower": {
-            "usage": "!higherlower [limit] [ranking type]",
+            "usage": "/higherlower [limit] [ranking type]",
             "description": "Play the higher or lower rating game using buttons. Optional limit for anime pool size (default: 500, min is 2, max is 2500) and ranking type.",
-            "example": "!higherlower or !higherlower 100 favorite",
+            "example": "/higherlower or /higherlower 100 favorite",
             "ranking types": "popularity (default), airing, movie, favorite",
         },
     }
@@ -1164,14 +1157,14 @@ async def help(ctx, command: str = None, *args):
     if command not in help_data:
         embed = discord.Embed(
             title="❌ Unknown Command",
-            description=f"'{command}' is not a valid command.\nUse `!help` to see all available commands.",
+            description=f"'{command}' is not a valid command.\nUse `/help` to see all available commands.",
             color=discord.Color.red(),
         )
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         return
 
     data = help_data[command]
-    embed = discord.Embed(title=f"📖 Help: !{command}", color=discord.Color.green())
+    embed = discord.Embed(title=f"📖 Help: /{command}", color=discord.Color.green())
 
     embed.add_field(name="Usage", value=f"`{data['usage']}`", inline=False)
     embed.add_field(name="Description", value=data["description"], inline=False)
@@ -1194,15 +1187,38 @@ async def help(ctx, command: str = None, *args):
     embed.add_field(name="Example", value=data["example"], inline=False)
     embed.set_footer(text="Powered by MyAnimeList")
 
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 
 # ===== BOT STARTUP =====
 
 
+@bot.tree.error
+async def on_app_command_error(
+    interaction: discord.Interaction, error: app_commands.AppCommandError
+):
+    """Handle errors for app commands"""
+    if isinstance(error, app_commands.CommandOnCooldown):
+        await interaction.response.send_message(
+            f"This command is on cooldown. Please try again in {error.retry_after:.2f}s.",
+            ephemeral=True,
+        )
+    else:
+        debug(f"App command error: {error}")
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "An error occurred while processing the command.", ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                "An error occurred while processing the command.", ephemeral=True
+            )
+
+
 @bot.event
 async def on_ready():
-    print(f"Bot logged in as {bot.user}")
+    await bot.tree.sync()
+    print(f"{bot.user} has connected and synced commands!")
 
 
 if __name__ == "__main__":
